@@ -8,7 +8,7 @@ const HOT_FILE = resolve(__dirname, 'public/hot');
 
 function writeHotFilePlugin() {
     return {
-        name: 'jaiminho-write-hot-file',
+        name: 'doctrinephp-write-hot-file',
         apply: 'serve',
         configureServer(server) {
             server.httpServer?.once('listening', () => {

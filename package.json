@@ -1,12 +1,21 @@
 {
-  "name": "jaiminho3",
+  "name": "doctrinephp",
   "version": "1.0.0",
   "description": "Repositório de apoio à aula Técnicas de Teste de Software, preparado para apresentação aos alunos do Senac.",
+  "homepage": "https://github.com/LenizaOMD2009/doctrinephp#readme",
+  "bugs": {
+    "url": "https://github.com/LenizaOMD2009/doctrinephp/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LenizaOMD2009/doctrinephp.git"
+  },
   "license": "MIT",
-  "author": "WILTON WILL DE PAULO",
+  "author": "Leniza Oliveira Mendes",
   "type": "module",
-  "engines": {
-    "node": ">=22.12.0"
+  "main": "vite.config.js",
+  "directories": {
+    "test": "tests"
   },
   "scripts": {
     "dev": "vite",
@@ -29,5 +38,8 @@
   },
   "devDependencies": {
     "vite": "8.0.10"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

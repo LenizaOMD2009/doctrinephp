@@ -1,18 +1,14 @@
 <?php
 
-declare(strict_types=1);
-
 namespace app\controller;
 
-
-final class Home extends Base
+final class Login extends Base
 {
-    public function home($request, $response)
+    public function login($request, $response)
     {
         try {
-
             return $this->getTwig()
-                ->render($response, $this->setView('home'), [
+                ->render($response, $this->setView('login'), [
                     'titulo' => 'Início',
                 ])
                 ->withHeader('Content-Type', 'text/html')

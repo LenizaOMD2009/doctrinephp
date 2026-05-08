@@ -8,48 +8,40 @@ export default class Requests {
         };
         this.body = null;
     }
-    /**
-     * Define token Bearer para autenticação
-     */
+
+    // Define token Bearer para autenticação
     setToken(token) {
         this.token = token;
         return this;
     }
-    /**
-     * Define formulário via ID e cria FormData
-     */
+
+    // Define formulário via ID e cria FormData
     setForm(formId) {
         const form = document.getElementById(formId);
-
         if (!form) {
             throw new Error(`Formulário com id "${formId}" não encontrado`);
         }
-
         this.body = new FormData(form);
         return this;
     }
-    /**
-     * Define body manualmente (JSON, FormData, etc)
-     */
+
+    // Define body manualmente (JSON, FormData, etc)
     setBody(body) {
         this.body = body;
         return this;
     }
-    /**
-     * Método POST
-     */
+
+    // Método POST
     async post(endpoint) {
         return this.#request('POST', endpoint);
     }
-    /**
-     * Método GET
-     */
+
+    // Método GET
     async get(endpoint) {
         return this.#request('GET', endpoint);
     }
-    /**
-     * Core request handler
-     */
+
+    //Core request handler
     async #request(method, endpoint) {
         const url = `${this.baseUrl}${endpoint}`;
         const headers = { ...this.headers };
@@ -77,9 +69,8 @@ export default class Requests {
         }
         return this.#safeParseJson(response);
     }
-    /**
-     * Evita erro ao tentar parsear body vazio
-     */
+
+    // Evita erro ao tentar parsear body vazio
     async #safeParseJson(response) {
         const text = await response.text();
         return text ? JSON.parse(text) : null;

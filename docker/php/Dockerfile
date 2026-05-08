@@ -28,7 +28,7 @@ RUN npm run build
 # ============================================================================
 FROM php:8.5.4-fpm-alpine3.23
 
-ENV TZ={$TZ} \
+ENV TZ=${TZ} \
     COMPOSER_ALLOW_SUPERUSER=1
 
 RUN apk add --no-cache \

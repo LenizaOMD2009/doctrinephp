@@ -8,7 +8,7 @@ use app\middleware\Middleware;
 $app->get('/login',  app\controller\Login::class . ':login')->add(Middleware::web());
 $app->post('/login', app\controller\Login::class . ':authenticate');
 $app->get('/logout', app\controller\Login::class . ':logout');
-
+$app->post('/cadastro', app\controller\Login::class . ':register');
 # Rotas privadas — páginas HTML
 $app->get('/',     app\controller\Home::class . ':home')->add(Middleware::web());
 $app->get('/home', app\controller\Home::class . ':home')->add(Middleware::web());

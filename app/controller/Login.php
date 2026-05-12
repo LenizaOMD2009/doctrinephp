@@ -1,6 +1,7 @@
 <?php
 
 namespace app\controller;
+use Doctrine\DBAL\ParameterType;
 
 final class Login extends Base
 {
@@ -184,5 +185,94 @@ final class Login extends Base
         return (new \Slim\Psr7\Response())
             ->withHeader('Location', '/login')
             ->withStatus(302);
+    }
+    public function register($request, $response)
+    {
+        # Lê o JSON enviado pelo fetch do frontend
+        $body     = (string) $request->getBody();
+    $data     = json_decode($body, true);
+
+    $nome      = trim($data['nome']      ?? '');
+    $sobrenome = trim($data['sobrenome'] ?? '');
+    $cpf       = preg_replace('/\D/', '', $data['cpf'] ?? '');
+    $rg        = preg_replace('/\D/', '', $data['rg']  ?? '');
+    $senha     = $data['senha']     ?? '';
+    $contacts  = $data['contacts']  ?? [];
+
+    # Validação básica server-side
+    if (!$nome || !$sobrenome || strlen($cpf) !== 11 || strlen($senha) < 8) {
+        return $this->json($response, [
+            'status' => false,
+            'msg'    => 'Dados inválidos. Verifique os campos obrigatórios.',
+        ], 422);
+    }
+
+    try {
+        $conn = \app\database\DB::connection();
+
+        # Verifica se CPF já existe
+        $existe = $conn->fetchOne('SELECT id FROM users WHERE cpf = ?', [$cpf]);
+        if ($existe) {
+            return $this->json($response, [
+                'status' => false,
+                'msg'    => 'Este CPF já está cadastrado.',
+            ], 409);
+        }
+
+        # Insere o usuário (ativo=false aguarda aprovação do admin, ou true se quiser liberar direto)
+$conn->insert('users', [
+    'nome'          => $nome,
+    'sobrenome'     => $sobrenome,
+    'cpf'           => $cpf,
+    'rg'            => $rg,
+    'senha'         => password_hash($senha, PASSWORD_DEFAULT),
+    'ativo'         => false,
+    'administrador' => false,
+    'criado_em'     => date('Y-m-d H:i:s'),
+    'atualizado_em' => date('Y-m-d H:i:s'),
+], [
+    'ativo'         => ParameterType::BOOLEAN,
+    'administrador' => ParameterType::BOOLEAN,
+]);
+        $userId = (int) $conn->fetchOne("SELECT currval(pg_get_serial_sequence('users', 'id'))");
+        # Insere os contatos (email, celular, telefone, whatsapp)
+        $tiposValidos = ['EMAIL', 'CELULAR', 'TELEFONE', 'WHATSAPP'];
+        foreach ($contacts as $contact) {
+            $tipo    = strtoupper(trim($contact['tipo']    ?? ''));
+            $contato = trim($contact['contato'] ?? '');
+
+            if (!in_array($tipo, $tiposValidos, true) || !$contato) {
+                continue;
+            }
+
+            $conn->insert('contact', [
+                'id_usuario'   => $userId,
+                'tipo'         => $tipo,
+                'contato'      => $contato,
+                'criado_em'    => date('Y-m-d H:i:s'),
+                'atualizado_em'=> date('Y-m-d H:i:s'),
+            ]);
+        }
+
+        return $this->json($response, [
+            'status' => true,
+            'msg'    => 'Cadastro realizado! Aguarde a ativação da sua conta pelo administrador.',
+            'id'     => $userId,
+        ], 201);
+
+    } catch (\PDOException $e) {
+        # Violação de unique (contato duplicado, CPF race condition, etc.)
+        if (str_contains($e->getMessage(), 'unique') || str_contains($e->getMessage(), 'duplicate')) {
+            return $this->json($response, [
+                'status' => false,
+                'msg'    => 'CPF ou contato já cadastrado no sistema.',
+            ], 409);
+        }
+        error_log('[register][DB] ' . $e->getMessage());
+        return $this->json($response, ['status' => false, 'msg' => 'Erro ao salvar. Tente novamente.'], 500);
+    } catch (\Throwable $e) {
+        error_log('[register][GERAL] ' . $e->getMessage());
+        return $this->json($response, ['status' => false, 'msg' => 'Erro inesperado. Tente novamente.'], 500);
+    }
     }
 }

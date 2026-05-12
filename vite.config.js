@@ -8,7 +8,7 @@ const HOT_FILE = resolve(__dirname, 'public/hot');
 
 function writeHotFilePlugin() {
     return {
-        name: 'doctrinephp-write-hot-file',
+        name: 'jaiminho-write-hot-file',
         apply: 'serve',
         configureServer(server) {
             server.httpServer?.once('listening', () => {
@@ -49,6 +49,7 @@ export default defineConfig(({ command }) => ({
                 // JS principal — sem nenhum import de CSS dentro dele
                 app: resolve(__dirname, 'resources/js/app.js'),
                 // Entries por página
+                'pages/login': resolve(__dirname, 'resources/js/pages/login.js'),
                 'pages/customer': resolve(__dirname, 'resources/js/pages/customer.js'),
                 'pages/list-customer': resolve(__dirname, 'resources/js/pages/list-customer.js')
             },

@@ -17,10 +17,11 @@ final class Login extends Base
             var_dump($e->getMessage());
         }
     }
+
     public function authenticate($request, $response)
     {
         # Recupera as credenciais enviadas no corpo da requisição
-        $form = $request->getParsedBody();
+        $form  = $request->getParsedBody();
         $login = $form['login'] ?? null;
         $senha = $form['senha'] ?? null;
 
@@ -36,23 +37,22 @@ final class Login extends Base
 
         try {
 
-            # Começa a montar a query: SELECT * FROM vw_person
-            $qb = \app\database\DB::select('*')
-                ->from('vw_person');
+            # Busca o usuário na view vw_user (tabela users + tabela contact)
+            # Aceita CPF, e-mail, celular ou telefone como login
+            $qb    = \app\database\DB::select('*')->from('vw_user');
+            $param = $qb->createNamedParameter($login);
 
-            # Define o valor que será procurado nos três campos
-            # O Doctrine cria um "placeholder seguro" no lugar do valor real,
-            # protegendo a aplicação contra SQL injection.
-            $login = $qb->createNamedParameter($login);
+            $qb->where('cpf = '      . $param)
+               ->orWhere('email = '  . $param)
+               ->orWhere('celular = '. $param)
+               ->orWhere('telefone = '. $param);
 
-            # Monta a cláusula WHERE com três condições ligadas por OR:
-            # WHERE cpf_cnpj = :login OR email = :login OR whatsapp = :login
-            $qb->where('cpf_cnpj = ' . $login)
-                ->orWhere('email = '    . $login)
-                ->orWhere('whatsapp = ' . $login);
-
-            # Executa a query e busca um único registro (a primeira linha encontrada)
             $person = $qb->fetchAssociative();
+
+            # Verifica se o usuário está ativo
+            if ($person && !$person['ativo']) {
+                return $this->json($response, ['status' => false, 'msg' => 'Usuário inativo. Entre em contato com o administrador.', 'id' => 0], 403);
+            }
 
             # Hash bcrypt pré-computado e inválido, usado quando o usuário não existe (proteção contra timing attack)
             $dummyHash = '$2y$10$CwTycUXWue0Thq9StjUM0uJ8.k3.kK1m3Sv7lJ1uG9N9Yvb.MqYsa';
@@ -81,7 +81,7 @@ final class Login extends Base
             # Renova o hash da senha se o algoritmo/custo padrão tiver mudado
             if (password_needs_rehash($person['senha'], PASSWORD_DEFAULT)) {
                 \app\database\DB::connection()->update(
-                    'person',
+                    'users',
                     [
                         'senha'         => password_hash($senha, PASSWORD_DEFAULT),
                         'atualizado_em' => date('Y-m-d H:i:s'),
@@ -102,28 +102,30 @@ final class Login extends Base
 
             # Monta o payload do JWT usando o ID do usuário como subject (identificador estável e único)
             $payload = [
-                'iat' => time(),                 # Momento de emissão
-                'exp' => time() + $lifetime,     # Expiração alinhada à sessão
-                'sub' => (string) $person['id'], # Subject = ID do usuário
+                'iat' => time(),                  # Momento de emissão
+                'exp' => time() + $lifetime,      # Expiração alinhada à sessão
+                'sub' => (string) $person['id'],  # Subject = ID do usuário
             ];
 
             # Assina o token JWT com a chave secreta da aplicação
             $jwt = \Firebase\JWT\JWT::encode($payload, SECRET_KEY, 'HS256');
 
             # Determina se a conexão está em HTTPS (define o atributo Secure do cookie)
-            $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || $_SERVER['SERVER_PORT'] == 443;
+            $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                     || (($_SERVER['SERVER_PORT'] ?? 80) == 443);
 
-            # Define o cookie auth_token usando COOKIE_DOMAIN (constante de configuração, imune a Host Header Injection)
+            # Grava o JWT em cookie httponly (inacessível ao JavaScript)
+            # domain='' restringe ao domínio exato, sem propagar subdomínios
             setcookie('auth_token', $jwt, [
                 'expires'  => time() + $lifetime,
                 'path'     => '/',
-                'domain' => $_SERVER['HTTP_HOST'], #Usa dinamicamente o domínio correto
+                'domain'   => '',
                 'secure'   => $isSecure,
                 'httponly' => true,
                 'samesite' => 'Lax',
             ]);
 
-            # Registra na sessão o horário de criação e o horário previsto de expiração (formato H:i:s correto)
+            # Registra na sessão o horário de criação e o horário previsto de expiração
             $_SESSION['user']['sessao_criada_em'] = (new \DateTime())->format('Y-m-d H:i:s');
             $_SESSION['user']['sessao_expira_em'] = (new \DateTime())->modify("+{$lifetime} seconds")->format('Y-m-d H:i:s');
 
@@ -148,5 +150,39 @@ final class Login extends Base
             error_log('[auth][GERAL] ' . $e->getMessage());
             return $this->json($response, ['status' => false, 'msg' => 'Erro inesperado. Tente novamente.', 'id' => 0], 500);
         }
+    }
+
+    # Destrói a sessão e apaga o cookie JWT, encerrando a autenticação
+    public function logout($request, $response)
+    {
+        $_SESSION = [];
+
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), '', [
+                'expires'  => time() - 42000,
+                'path'     => $params['path'],
+                'domain'   => $params['domain'],
+                'secure'   => $params['secure'],
+                'httponly' => $params['httponly'],
+                'samesite' => 'Lax',
+            ]);
+        }
+
+        session_destroy();
+
+        # Remove o cookie JWT sobrescrevendo com expiração no passado
+        setcookie('auth_token', '', [
+            'expires'  => time() - 42000,
+            'path'     => '/',
+            'domain'   => '',
+            'secure'   => false,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+
+        return (new \Slim\Psr7\Response())
+            ->withHeader('Location', '/login')
+            ->withStatus(302);
     }
 }

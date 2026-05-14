@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+session_start();
+
 # Domínio atual da requisição — usado no payload JWT (iss/aud) e no cookie auth_token
 # Definido aqui centralmente para evitar repetição e proteger contra Host Header Injection
 define('HOST', $_SERVER['HTTP_HOST']);

@@ -2,8 +2,6 @@
 
 namespace app\controller;
 
-use Doctrine\DBAL\ParameterType;
-
 final class Login extends Base
 {
     public function login($request, $response)
@@ -19,7 +17,6 @@ final class Login extends Base
             var_dump($e->getMessage());
         }
     }
-
     public function authenticate($request, $response)
     {
         # Recupera as credenciais enviadas no corpo da requisição
@@ -47,12 +44,11 @@ final class Login extends Base
             # protegendo a aplicação contra SQL injection.
             $placeholder = $qb->createNamedParameter($login);
 
-            # Monta a cláusula WHERE aceitando CPF, e-mail, whatsapp, celular ou telefone como login
-            $qb->where('cpf = '       . $placeholder)
-               ->orWhere('email = '   . $placeholder)
-               ->orWhere('whatsapp = '. $placeholder)
-               ->orWhere('celular = ' . $placeholder)
-               ->orWhere('telefone = '. $placeholder);
+            # Monta a cláusula WHERE com três condições ligadas por OR:
+            # WHERE cpf = :login OR email = :login OR whatsapp = :login
+            $qb->where('cpf = '      . $placeholder)
+               ->orWhere('email = '  . $placeholder)
+               ->orWhere('whatsapp = '. $placeholder);
 
             # Executa a query e busca um único registro (a primeira linha encontrada)
             $user = $qb->fetchAssociative();
@@ -99,6 +95,17 @@ final class Login extends Base
                 );
             }
 
+            # Marca o usuário como ativo no banco ao realizar login
+            \app\database\DB::connection()->update(
+                'users',
+                [
+                    'ativo'         => true,
+                    'atualizado_em' => date('Y-m-d H:i:s'),
+                ],
+                ['id' => $user['id']],
+                ['ativo' => \Doctrine\DBAL\ParameterType::BOOLEAN]
+            );
+
             # Remove o hash da senha antes de gravar o usuário na sessão (evita expor credencial)
             unset($user['senha']);
 
@@ -112,8 +119,8 @@ final class Login extends Base
             # Cacheia o timestamp atual para manter coerência entre iat, nbf e exp
             $now = time();
 
-            # Identificador único deste token em hex de 32 caracteres (16 bytes random_bytes).
-            # Permite revogar tokens individualmente via denylist no Redis (futuro).
+            # Identificador único deste token, em hex de 32 caracteres (16 bytes random_bytes)
+            # Permite revogar tokens individualmente via denylist no Redis
             $jti = bin2hex(random_bytes(16));
 
             # Monta o payload do JWT seguindo a RFC 7519 (Registered Claim Names)
@@ -122,23 +129,22 @@ final class Login extends Base
                 'nbf' => $now,                  # Not Before: token só é válido a partir daqui
                 'exp' => $now + $lifetime,      # Expiration: expiração alinhada à sessão PHP
                 'sub' => (string) $user['id'],  # Subject: ID do usuário autenticado
-                'iss' => \HOST,                 # Issuer: domínio emissor — \HOST força namespace global
-                'aud' => \HOST,                 # Audience: aplicação que vai consumir o token
-                'jti' => $jti,                  # JWT ID: identificador único para revogação futura
+                'iss' => HOST,                  # Issuer: domínio emissor (mesma constante do cookie)
+                'aud' => HOST,                  # Audience: aplicação que vai consumir o token
+                'jti' => $jti,                  # JWT ID: identificador único para revogação
             ];
 
             # Assina o token JWT com a chave secreta da aplicação
-            $jwt = \Firebase\JWT\JWT::encode($payload, \SECRET_KEY, 'HS256');
+            $jwt = \Firebase\JWT\JWT::encode($payload, SECRET_KEY, 'HS256');
 
             # Determina se a conexão está em HTTPS (define o atributo Secure do cookie)
-            $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-                     || (($_SERVER['SERVER_PORT'] ?? 80) == 443);
+            $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || $_SERVER['SERVER_PORT'] == 443;
 
-            # Grava o JWT em cookie httponly — domain='' restringe ao domínio exato sem propagar subdomínios
+            # Define o cookie auth_token usando domain (constante de configuração, imune a Host Header Injection)
             setcookie('auth_token', $jwt, [
                 'expires'  => time() + $lifetime,
                 'path'     => '/',
-                'domain'   => '',
+                'domain'   => HOST,
                 'secure'   => $isSecure,
                 'httponly' => true,
                 'samesite' => 'Lax',
@@ -146,7 +152,7 @@ final class Login extends Base
 
             # Cria um único DateTimeImmutable aproveitando $now já cacheado (coerência com iat/exp do JWT)
             $agora = (new \DateTimeImmutable())->setTimestamp($now);
-            # Registra na sessão o horário de criação e o horário previsto de expiração
+            # Registra na sessão o horário de criação e o horário previsto de expiração (formato H:i:s correto)
             $_SESSION['user']['sessao_criada_em'] = $agora->format('Y-m-d H:i:s');
             $_SESSION['user']['sessao_expira_em'] = $agora->modify("+{$lifetime} seconds")->format('Y-m-d H:i:s');
 
@@ -159,23 +165,37 @@ final class Login extends Base
             ], 200);
 
         } catch (\PDOException $e) {
-            # Erro de banco: loga internamente e responde de forma genérica
             error_log('[auth][DB] ' . $e->getMessage());
             return $this->json($response, ['status' => false, 'msg' => 'Não foi possível concluir o login. Tente novamente.', 'id' => 0], 500);
         } catch (\UnexpectedValueException | \DomainException $e) {
-            # Erro específico do Firebase JWT (chave inválida, payload malformado, etc.)
             error_log('[auth][JWT] ' . $e->getMessage());
             return $this->json($response, ['status' => false, 'msg' => 'Não foi possível concluir o login. Tente novamente.', 'id' => 0], 500);
         } catch (\Throwable $e) {
-            # Qualquer outra falha inesperada: loga e responde de forma genérica
             error_log('[auth][GERAL] ' . $e->getMessage());
-            return $this->json($response, ['status' => false, 'msg' => 'Erro inesperado. Tente novamente.', 'id' => 0], 500);
+            return $this->json($response, ['status' => false, 'msg' => 'Erro inesperado. Tente novamente ', 'id' => 0], 500);
         }
     }
-
     # Destrói a sessão e apaga o cookie JWT, encerrando a autenticação
     public function logout($request, $response)
     {
+        # Marca o usuário como inativo (ativo = false) no banco antes de encerrar a sessão
+        $userId = $_SESSION['user']['id'] ?? null;
+        if ($userId) {
+            try {
+                \app\database\DB::connection()->update(
+                    'users',
+                    [
+                        'ativo'         => false,
+                        'atualizado_em' => date('Y-m-d H:i:s'),
+                    ],
+                    ['id' => $userId],
+                    ['ativo' => \Doctrine\DBAL\ParameterType::BOOLEAN]
+                );
+            } catch (\Throwable $e) {
+                error_log('[logout][DB] ' . $e->getMessage());
+            }
+        }
+
         # Limpa todos os dados da sessão
         $_SESSION = [];
 
@@ -199,7 +219,7 @@ final class Login extends Base
         setcookie('auth_token', '', [
             'expires'  => time() - 42000,
             'path'     => '/',
-            'domain'   => '',
+            'domain'   => HOST,
             'secure'   => false,
             'httponly' => true,
             'samesite' => 'Lax',
@@ -210,113 +230,166 @@ final class Login extends Base
             ->withHeader('Location', '/login')
             ->withStatus(302);
     }
-
-    # Cadastro de novo usuário — lê JSON, valida, insere users + contacts
     public function preRegister($request, $response)
     {
-        # Lê o JSON enviado pelo fetch do frontend
-        $body = (string) $request->getBody();
-        $data = json_decode($body, true);
+        $form      = $request->getParsedBody();
+        $nome      = trim($form['nome']      ?? '');
+        $sobrenome = trim($form['sobrenome'] ?? '');
+        $cpf       = trim($form['cpf']       ?? '');
+        $rg        = trim($form['rg']        ?? '');
+        $senha     = $form['senha']          ?? '';
+        $contacts  = $form['contacts']       ?? [];
+        $email     = trim($form['email']     ?? '');
+        $telefone  = trim($form['telefone']  ?? '');
 
-        # Captura os dados informados pelo usuário
-        $nome      = trim($data['nome']      ?? '');
-        $sobrenome = trim($data['sobrenome'] ?? '');
-        $cpf       = preg_replace('/\D/', '', $data['cpf'] ?? '');
-        $rg        = preg_replace('/\D/', '', $data['rg']  ?? '');
-        $senha     = $data['senha']    ?? '';
-        $contacts  = $data['contacts'] ?? [];
-
-        # Validação básica server-side antes de tocar no banco
-        if (!$nome || !$sobrenome || strlen($cpf) !== 11 || strlen($senha) < 8) {
-            return $this->json($response, [
-                'status' => false,
-                'msg'    => 'Dados inválidos. Verifique os campos obrigatórios.',
-            ], 422);
+        if ($email) {
+            $contacts[] = ['tipo' => 'EMAIL', 'contato' => $email];
+        }
+        if ($telefone) {
+            $contacts[] = ['tipo' => 'TELEFONE', 'contato' => $telefone];
         }
 
-        try {
-            $conn = \app\database\DB::connection();
+        if (!$nome || !$sobrenome || !$cpf || !$senha) {
+            return $this->json($response, [
+                'status' => false,
+                'msg'    => 'Nome, sobrenome, CPF e senha são obrigatórios.',
+            ], 400);
+        }
 
-            # Verifica se o CPF já está cadastrado antes de tentar inserir
-            $existe = $conn->fetchOne('SELECT id FROM users WHERE cpf = ?', [$cpf]);
-            if ($existe) {
-                return $this->json($response, [
-                    'status' => false,
-                    'msg'    => 'Este CPF já está cadastrado.',
-                ], 409);
-            }
+        $DataUser = [
+            'nome'      => $nome,
+            'sobrenome' => $sobrenome,
+            'cpf'       => $cpf,
+            'rg'        => $rg,
+            'senha'     => password_hash($senha, PASSWORD_DEFAULT),
+        ];
 
-            # Insere o usuário — ativo=false aguarda aprovação do administrador
-            $conn->insert('users', [
-                'nome'          => $nome,
-                'sobrenome'     => $sobrenome,
-                'cpf'           => $cpf,
-                'rg'            => $rg,
-                'senha'         => password_hash($senha, PASSWORD_DEFAULT),
-                'ativo'         => false,
-                'administrador' => false,
-                'criado_em'     => date('Y-m-d H:i:s'),
-                'atualizado_em' => date('Y-m-d H:i:s'),
-            ], [
-                'ativo'         => ParameterType::BOOLEAN,
-                'administrador' => ParameterType::BOOLEAN,
-            ]);
+        $id_usuario = \app\database\DB::connection()->insert('users', $DataUser);
 
-            # Busca o ID gerado de forma segura via currval (PostgreSQL)
-            $id_usuario = (int) $conn->fetchOne("SELECT currval(pg_get_serial_sequence('users', 'id'))");
-
-            # Insere os contatos (email, celular, telefone, whatsapp) com validação de tipo
-            $tiposValidos = ['EMAIL', 'CELULAR', 'TELEFONE', 'WHATSAPP'];
+        if (is_array($contacts)) {
             foreach ($contacts as $contact) {
-                $tipo    = strtoupper(trim($contact['tipo']    ?? ''));
+                $tipo    = strtoupper(trim($contact['tipo'] ?? ''));
                 $contato = trim($contact['contato'] ?? '');
-
-                # Ignora contatos com tipo inválido ou valor vazio
-                if (!in_array($tipo, $tiposValidos, true) || !$contato) {
+                if (!$tipo || !$contato) {
+                    continue;
+                }
+                if (!in_array($tipo, ['EMAIL', 'CELULAR', 'TELEFONE', 'WHATSAPP'], true)) {
                     continue;
                 }
 
-                $conn->insert('contact', [
-                    'id_usuario'    => $id_usuario,
-                    'tipo'          => $tipo,
-                    'contato'       => $contato,
-                    'criado_em'     => date('Y-m-d H:i:s'),
-                    'atualizado_em' => date('Y-m-d H:i:s'),
+                \app\database\DB::connection()->insert('contact', [
+                    'id_usuario' => $id_usuario,
+                    'tipo'       => $tipo,
+                    'contato'    => $contato,
                 ]);
             }
-
-            # Retorna 201 (Created) — código semântico correto para criação de recurso
-            return $this->json($response, [
-                'status' => true,
-                'msg'    => 'Cadastro realizado! Aguarde a ativação da sua conta pelo administrador.',
-                'id'     => $id_usuario,
-            ], 201);
-
-        } catch (\PDOException $e) {
-            # Trata violação de unique constraint (CPF ou contato duplicado por race condition)
-            if (str_contains($e->getMessage(), 'unique') || str_contains($e->getMessage(), 'duplicate')) {
-                return $this->json($response, [
-                    'status' => false,
-                    'msg'    => 'CPF ou contato já cadastrado no sistema.',
-                ], 409);
-            }
-            error_log('[register][DB] ' . $e->getMessage());
-            return $this->json($response, ['status' => false, 'msg' => 'Erro ao salvar. Tente novamente.'], 500);
-        } catch (\Throwable $e) {
-            error_log('[register][GERAL] ' . $e->getMessage());
-            return $this->json($response, ['status' => false, 'msg' => 'Erro inesperado. Tente novamente.'], 500);
         }
-    }
 
-    # TODO: implementar autenticação via Google OAuth
+        return $this->json($response, [
+            'status' => true,
+            'msg'    => 'Usuário cadastrado com sucesso!',
+        ], 200);
+    }
     public function google($request, $response)
     {
         $form              = $request->getParsedBody();
         $credential        = $form['credential']   ?? null;
         $form_g_csrf_token = $form['g_csrf_token'] ?? null;
+        $cookie_g_csrf_token = $_COOKIE['g_csrf_token'] ?? null;
+        $google_client_id  = $_ENV['GOOGLE_CLIENT_ID'] ?? null;
 
-        if (is_null($credential) || is_null($form_g_csrf_token)) {
+        if (is_null($credential) || is_null($form_g_csrf_token) || is_null($cookie_g_csrf_token)) {
             return $this->json($response, ['status' => false, 'msg' => 'Credenciais Google ausentes.', 'id' => 0], 400);
+        }
+
+        $client = new \Google\Client(['client_id' => $google_client_id]);
+
+        try {
+            $payload = $client->verifyIdToken($credential);
+
+            if (!$payload) {
+                return $this->json($response, ['status' => false, 'msg' => 'Token do Google inválido.', 'id' => 0], 401);
+            }
+
+            # Dados do usuário extraídos do payload validado
+            $email       = $payload['email']       ?? null;
+            $given_name  = $payload['given_name']  ?? '';
+            $family_name = $payload['family_name'] ?? '';
+
+            if (!$email) {
+                return $this->json($response, ['status' => false, 'msg' => 'E-mail não encontrado no token Google.', 'id' => 0], 400);
+            }
+
+            # Busca o usuário pelo e-mail na view vw_user
+            $qb = \app\database\DB::select('*')->from('vw_user');
+            $qb->where('email = ' . $qb->createNamedParameter($email));
+            $user = $qb->fetchAssociative();
+
+            # Usuário não encontrado no sistema
+            if (!$user) {
+                return $this->json($response, [
+                    'status' => false,
+                    'msg'    => 'Nenhuma conta vinculada a este e-mail. Por favor, cadastre-se.',
+                    'id'     => 0,
+                ], 404);
+            }
+
+            # Conta inativa: aguarda aprovação do administrador
+            if (!$user['ativo']) {
+                return $this->json($response, [
+                    'status' => false,
+                    'msg'    => 'Por enquanto você ainda não está autorizado, por favor aguarde...',
+                    'id'     => 0,
+                ], 403);
+            }
+
+            # Conta ativa: cria sessão igual ao fluxo normal de login
+            unset($user['senha']);
+
+            $_SESSION['user']          = $user;
+            $_SESSION['user']['logado'] = true;
+
+            $lifetime = (int) (ini_get('session.gc_maxlifetime') ?: 3600);
+            $now      = time();
+            $jti      = bin2hex(random_bytes(16));
+
+            $payload_jwt = [
+                'iat' => $now,
+                'nbf' => $now,
+                'exp' => $now + $lifetime,
+                'sub' => (string) $user['id'],
+                'iss' => HOST,
+                'aud' => HOST,
+                'jti' => $jti,
+            ];
+
+            $jwt = \Firebase\JWT\JWT::encode($payload_jwt, SECRET_KEY, 'HS256');
+
+            $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || $_SERVER['SERVER_PORT'] == 443;
+
+            setcookie('auth_token', $jwt, [
+                'expires'  => time() + $lifetime,
+                'path'     => '/',
+                'domain'   => HOST,
+                'secure'   => $isSecure,
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
+
+            $agora = (new \DateTimeImmutable())->setTimestamp($now);
+            $_SESSION['user']['sessao_criada_em'] = $agora->format('Y-m-d H:i:s');
+            $_SESSION['user']['sessao_expira_em'] = $agora->modify("+{$lifetime} seconds")->format('Y-m-d H:i:s');
+
+            return $this->json($response, [
+                'status'           => true,
+                'msg'              => 'Seja bem vindo de volta!',
+                'id'               => $user['id'],
+                'sessao_expira_em' => $_SESSION['user']['sessao_expira_em'],
+            ], 200);
+
+        } catch (\Throwable $e) {
+            error_log('[google][auth] ' . $e->getMessage());
+            return $this->json($response, ['status' => false, 'msg' => 'Falha na autenticação com Google. Tente novamente.', 'id' => 0], 500);
         }
     }
 }

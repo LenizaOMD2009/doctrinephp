@@ -1,3 +1,4 @@
+import Validate from '../components/validate.js';
 import Requests from '../components/requests.js';
 
 const BtnLogin   = document.getElementById('btnLogin');
@@ -19,9 +20,15 @@ function clearErrors() {
 }
 
 function validate() {
-    let ok = true;
-    if (!InputLogin.value.trim()) { markInvalid(InputLogin); ok = false; }
-    if (!InputSenha.value.trim()) { markInvalid(InputSenha); ok = false; }
+    Validate.SetForm('form');
+    Validate.form.validate({
+        rules: {
+            login: { required: true },
+            senha: { required: true }
+        }
+    });
+
+    const ok = Validate.Validate();
     if (!ok) {
         Swal.fire({ icon: 'warning', title: 'Campos obrigatórios', text: 'Preencha o usuário e a senha antes de continuar.', confirmButtonColor: '#198754' });
     }

@@ -14,6 +14,7 @@ $dotenv->load();
 $app = AppFactory::create();
 
 $app->addRoutingMiddleware();
+$app->addBodyParsingMiddleware();
 
 $debug = ($_ENV['APP_DEBUG'] ?? 'false') === 'true';
 

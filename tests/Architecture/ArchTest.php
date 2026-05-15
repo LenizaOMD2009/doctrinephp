@@ -7,7 +7,7 @@ arch('Todos os arquivos usam strict types')
     ->toUseStrictTypes();
 
 arch('Sem debug no código de produção')
-    ->expect('App')
+    ->expect('app\controller')
     ->not->toUse(['var_dump', 'dd', 'dump', 'die']);
 
 arch('Controllers não acessam banco direto')

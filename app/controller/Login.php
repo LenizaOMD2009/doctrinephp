@@ -10,9 +10,19 @@ final class Login extends Base
     public function login($request, $response)
     {
         try {
+            $csrf = $_COOKIE['g_csrf_token'] ?? bin2hex(random_bytes(16));
+            setcookie('g_csrf_token', $csrf, [
+                'expires'  => time() + 3600,
+                'path'     => '/',
+                'secure'   => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+                'httponly' => false,
+                'samesite' => 'Lax',
+            ]);
+
             return $this->getTwig()
                 ->render($response, $this->setView('login'), [
-                    'titulo' => 'Início',
+                    'titulo'            => 'Início',
+                    'google_client_id' => $_ENV['GOOGLE_CLIENT_ID'] ?? '',
                 ])
                 ->withHeader('Content-Type', 'text/html')
                 ->withStatus(200);
@@ -209,13 +219,54 @@ final class Login extends Base
             $qb->where('email = ' . $qb->createNamedParameter($email));
             $user = $qb->fetchAssociative();
 
-            # Usuário não cadastrado no sistema
+            # Usuário não cadastrado no sistema: cria registro automático pelo Google.
             if (!$user) {
-                return $this->json($response, [
-                    'status' => false,
-                    'msg'    => 'Nenhuma conta vinculada a este e-mail. Por favor, cadastre-se.',
-                    'id'     => 0,
-                ], 404);
+                $givenName  = trim((string) ($claims['given_name'] ?? ''));
+                $familyName = trim((string) ($claims['family_name'] ?? ''));
+                $googleSub  = trim((string) ($claims['sub'] ?? ''));
+                $nome       = $givenName ?: 'Usuário';
+                $sobrenome  = $familyName ?: 'Google';
+                $cpf        = $googleSub ? 'google:' . $googleSub : 'google:' . md5($email);
+                $senhaHash  = password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT);
+
+                $connection = \app\database\DB::connection();
+                $connection->insert('users', [
+                    'nome'           => $nome,
+                    'sobrenome'      => $sobrenome,
+                    'cpf'            => $cpf,
+                    'rg'             => '',
+                    'senha'          => $senhaHash,
+                    'ativo'          => true,
+                    'administrador'  => false,
+                ]);
+
+                $id_usuario = (int) $connection->lastInsertId('users_id_seq');
+                if (!$id_usuario) {
+                    $id_usuario = (int) $connection->lastInsertId();
+                }
+
+                if ($email) {
+                    $connection->insert('contact', [
+                        'id_usuario' => $id_usuario,
+                        'tipo'       => 'EMAIL',
+                        'contato'    => $email,
+                    ]);
+                }
+
+                $user = [
+                    'id'            => $id_usuario,
+                    'nome'          => $nome,
+                    'sobrenome'     => $sobrenome,
+                    'cpf'           => $cpf,
+                    'rg'            => '',
+                    'senha'         => '',
+                    'ativo'         => true,
+                    'administrador' => false,
+                    'email'         => $email,
+                    'celular'       => null,
+                    'telefone'      => null,
+                    'whatsapp'      => null,
+                ];
             }
 
             # Conta inativa: aguarda aprovação do administrador
@@ -323,7 +374,8 @@ final class Login extends Base
     // -------------------------------------------------------------------------
     public function logout($request, $response)
     {
-        # Marca o usuário como inativo no banco antes de encerrar a sessão
+
+    # Marca o usuário como inativo no banco antes de encerrar a sessão
         $userId = $_SESSION['user']['id'] ?? null;
         if ($userId) {
             try {

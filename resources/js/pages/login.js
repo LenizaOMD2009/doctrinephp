@@ -66,6 +66,93 @@ async function handleLogin() {
     }
 }
 
+function getCookie(name) {
+    return document.cookie.split(';').map(item => item.trim()).find(item => item.startsWith(name + '='))?.split('=')[1] ?? null;
+}
+
+async function handleGoogleSignIn(credential) {
+    try {
+        const response = await fetch('/authentication/google', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                credential,
+                g_csrf_token: getCookie('g_csrf_token'),
+            }),
+        });
+
+        const data = await response.json();
+        if (!data?.status) {
+            throw new Error(data?.msg || 'Falha ao autenticar com Google.');
+        }
+
+        await Swal.fire({
+            icon: 'success',
+            title: 'Bem-vindo!',
+            text: data.msg,
+            timer: 1500,
+            timerProgressBar: true,
+            showConfirmButton: false,
+        });
+
+        window.location.href = '/home';
+    } catch (error) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Falha no login com Google',
+            text: error.message || 'Não foi possível conectar ao servidor.',
+            confirmButtonColor: '#198754',
+        });
+    }
+}
+
+function handleCredentialResponse(response) {
+    if (!response?.credential) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Falha no Google Sign-In',
+            text: 'Não foi possível receber o token do Google.',
+            confirmButtonColor: '#198754',
+        });
+        return;
+    }
+
+    handleGoogleSignIn(response.credential);
+}
+
+function initGoogleSignIn() {
+    const button = document.getElementById('loginGoogle');
+    const clientId = button?.dataset.clientId?.trim();
+    if (!button || !clientId || !window.google?.accounts?.id) {
+        return;
+    }
+
+    google.accounts.id.initialize({
+        client_id: clientId,
+        callback: handleCredentialResponse,
+        auto_select: false,
+        ux_mode: 'popup',
+        cancel_on_tap_outside: true,
+    });
+
+    google.accounts.id.renderButton(button, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        text: 'continue_with',
+    });
+}
+
+window.addEventListener('load', () => {
+    const googleScript = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
+    if (googleScript && window.google?.accounts?.id) {
+        initGoogleSignIn();
+    } else if (googleScript) {
+        googleScript.addEventListener('load', initGoogleSignIn);
+    }
+});
+
 // ===== MODAL CADASTRO =====
 window.openModal = function () {
     document.getElementById('overlay-cadastro').classList.add('active');

@@ -2,6 +2,14 @@
 
 declare(strict_types=1);
 
+// Se o handler configurado for 'redis' mas a extensão não estiver disponível,
+// faz fallback para o handler de arquivos para evitar warning/erro no session_start().
+$currentHandler = ini_get('session.save_handler') ?: 'files';
+if ($currentHandler === 'redis' && !extension_loaded('redis')) {
+	ini_set('session.save_handler', 'files');
+	ini_set('session.save_path', sys_get_temp_dir());
+}
+
 session_start();
 
 # Domínio atual da requisição — usado no payload JWT (iss/aud) e no cookie auth_token

@@ -64,8 +64,8 @@ final class Login extends Base
             $placeholder = $qb->createNamedParameter($login);
 
             $qb->where('cpf = '       . $placeholder)
-               ->orWhere('email = '   . $placeholder)
-               ->orWhere('whatsapp = '. $placeholder);
+                ->orWhere('email = '   . $placeholder)
+                ->orWhere('whatsapp = ' . $placeholder);
 
             $user = $qb->fetchAssociative();
 
@@ -73,7 +73,7 @@ final class Login extends Base
             if ($user && !$user['ativo']) {
                 return $this->json($response, [
                     'status' => false,
-                    'msg'    => 'Por enquanto você ainda não está autorizado, por favor aguarde...',
+                    'msg'    => 'Sua conta não está ativa no momento. Entre em contato com o administrador.',
                     'id'     => 0,
                 ], 403);
             }
@@ -116,22 +116,10 @@ final class Login extends Base
                 );
             }
 
-            # Marca o usuário como ativo no banco ao realizar login
-            \app\database\DB::connection()->update(
-                'users',
-                [
-                    'ativo'         => true,
-                    'atualizado_em' => date('Y-m-d H:i:s'),
-                ],
-                ['id' => $user['id']],
-                ['ativo' => \Doctrine\DBAL\ParameterType::BOOLEAN]
-            );
-
             # Remove o hash da senha antes de gravar na sessão
             unset($user['senha']);
 
             return $this->_criarSessaoERetornar($response, $user);
-
         } catch (\PDOException $e) {
             error_log('[auth][DB] ' . $e->getMessage());
             return $this->json($response, ['status' => false, 'msg' => 'Não foi possível concluir o login. Tente novamente.', 'id' => 0], 500);
@@ -149,7 +137,7 @@ final class Login extends Base
     // -------------------------------------------------------------------------
     public function google($request, $response)
     {
-         $form                = $request->getParsedBody();
+        $form                = $request->getParsedBody();
         $credential          = $form['credential']   ?? null;
         $form_g_csrf_token   = $form['g_csrf_token'] ?? null;
         $cookie_g_csrf_token = $_COOKIE['g_csrf_token'] ?? null;
@@ -206,6 +194,14 @@ final class Login extends Base
 
             $email = $claims['email'] ?? null;
 
+            if (!($claims['email_verified'] ?? false)) {
+                return $this->json($response, [
+                    'status' => false,
+                    'msg'    => 'O e-mail Google não foi verificado.',
+                    'id'     => 0,
+                ], 403);
+            }
+
             if (!$email) {
                 return $this->json($response, [
                     'status' => false,
@@ -240,9 +236,9 @@ final class Login extends Base
                     'administrador'  => false,
                 ]);
 
-                $id_usuario = (int) $connection->lastInsertId('users_id_seq');
+                $id_usuario = (int) $connection->lastInsertId();
                 if (!$id_usuario) {
-                    $id_usuario = (int) $connection->lastInsertId();
+                    throw new \RuntimeException("Não foi possível obter ID do usuário");
                 }
 
                 if ($email) {
@@ -273,7 +269,7 @@ final class Login extends Base
             if (!$user['ativo']) {
                 return $this->json($response, [
                     'status' => false,
-                    'msg'    => 'Por enquanto você ainda não está autorizado, por favor aguarde...',
+                    'msg'    => 'Sua conta não está ativa no momento. Entre em contato com o administrador.',
                     'id'     => 0,
                 ], 403);
             }
@@ -282,7 +278,6 @@ final class Login extends Base
             unset($user['senha']);
 
             return $this->_criarSessaoERetornar($response, $user);
-
         } catch (\JsonException $e) {
             error_log('[google][JSON] ' . $e->getMessage());
             return $this->json($response, ['status' => false, 'msg' => 'Resposta inválida do Google. Tente novamente.', 'id' => 0], 502);
@@ -327,13 +322,36 @@ final class Login extends Base
         }
 
         try {
-            $id_usuario = \app\database\DB::connection()->insert('users', [
+            $qb = \app\database\DB::select('id')->from('users');
+
+            $qb->where('cpf = ' . $qb->createNamedParameter($cpf));
+
+            $exists = $qb->fetchAssociative();
+
+            if ($exists) {
+
+                return $this->json($response, [
+                    'status' => false,
+                    'msg'    => 'CPF já cadastrado.',
+                ], 409);
+            }
+
+            $connection = \app\database\DB::connection();
+
+            $connection->insert('users', [
                 'nome'      => $nome,
                 'sobrenome' => $sobrenome,
                 'cpf'       => $cpf,
                 'rg'        => $rg,
                 'senha'     => password_hash($senha, PASSWORD_DEFAULT),
+                'ativo'     => false,
             ]);
+
+            $id_usuario = (int) $connection->lastInsertId();
+
+            if (!$id_usuario) {
+                throw new \RuntimeException("Não foi possível obter ID do usuário");
+            }
 
             # Insere cada contato validado
             foreach ($contacts as $contact) {
@@ -359,7 +377,6 @@ final class Login extends Base
                 'status' => true,
                 'msg'    => 'Usuário cadastrado com sucesso!',
             ], 200);
-
         } catch (\PDOException $e) {
             error_log('[preRegister][DB] ' . $e->getMessage());
             return $this->json($response, ['status' => false, 'msg' => 'Não foi possível realizar o cadastro. Tente novamente.'], 500);
@@ -374,31 +391,36 @@ final class Login extends Base
     // -------------------------------------------------------------------------
     public function logout($request, $response)
     {
-
-    # Marca o usuário como inativo no banco antes de encerrar a sessão
+        # Pega o ID do usuário ANTES de destruir a sessão
         $userId = $_SESSION['user']['id'] ?? null;
+
         if ($userId) {
+
             try {
+
                 \app\database\DB::connection()->update(
                     'users',
                     [
                         'ativo'         => false,
                         'atualizado_em' => date('Y-m-d H:i:s'),
                     ],
-                    ['id' => $userId],
-                    ['ativo' => \Doctrine\DBAL\ParameterType::BOOLEAN]
+                    [
+                        'id' => (int) $userId
+                    ]
                 );
             } catch (\Throwable $e) {
+
                 error_log('[logout][DB] ' . $e->getMessage());
             }
         }
+        session_unset();
+        # Limpa sessão
 
-        # Limpa todos os dados da sessão
-        $_SESSION = [];
-
-        # Apaga o cookie de sessão do PHP
+        # Remove cookie da sessão PHP
         if (ini_get('session.use_cookies')) {
+
             $params = session_get_cookie_params();
+
             setcookie(session_name(), '', [
                 'expires'  => time() - 42000,
                 'path'     => $params['path'],
@@ -408,16 +430,27 @@ final class Login extends Base
                 'samesite' => 'Lax',
             ]);
         }
+        $cookieDomain = parse_url(HOST, PHP_URL_HOST) ?: '';
 
-        # Destrói a sessão no servidor
+        if (!$cookieDomain) {
+            $cookieDomain = '';
+        }
+        # Destrói sessão
         session_destroy();
 
-        # Remove o cookie JWT sobrescrevendo com expiração no passado
+        $_SESSION = [];
+
+        # HTTPS detect
+        $isSecure =
+            (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || ($_SERVER['SERVER_PORT'] ?? null) == 443;
+
+        # Remove JWT
         setcookie('auth_token', '', [
             'expires'  => time() - 42000,
             'path'     => '/',
-            'domain'   => HOST,
-            'secure'   => false,
+            'domain' => $cookieDomain,
+            'secure'   => $isSecure,
             'httponly' => true,
             'samesite' => 'Lax',
         ]);
@@ -426,7 +459,6 @@ final class Login extends Base
             ->withHeader('Location', '/login')
             ->withStatus(302);
     }
-
     // =========================================================================
     // HELPER PRIVADO
     // Centraliza a criação de sessão + JWT + cookie, evitando duplicação
@@ -455,12 +487,12 @@ final class Login extends Base
 
         $jwt      = \Firebase\JWT\JWT::encode($payload, SECRET_KEY, 'HS256');
         $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-                    || $_SERVER['SERVER_PORT'] == 443;
+            || ($_SERVER['SERVER_PORT'] ?? null) == 443;
 
         setcookie('auth_token', $jwt, [
             'expires'  => time() + $lifetime,
             'path'     => '/',
-            'domain'   => HOST,
+            'domain'   => parse_url(HOST, PHP_URL_HOST),
             'secure'   => $isSecure,
             'httponly' => true,
             'samesite' => 'Lax',

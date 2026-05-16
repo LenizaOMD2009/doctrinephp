@@ -17,10 +17,26 @@ class Middleware
             #Lê o JWT gravado pelo método auth() no cookie httponly do navegador.
             $token = $_COOKIE['auth_token'] ?? null;
             try {
-                #Curto-circuito: exige cookie presente e flag de sessão antes do decode.
-                if (!$token || empty($_SESSION['user']['logado'])) throw new \RuntimeException();
-                #Valida assinatura HS256 e expiração do payload contra a SECRET_KEY.
-                JWT::decode($token, new Key(SECRET_KEY, 'HS256'));
+
+                if (!$token || empty($_SESSION['user']['logado'])) {
+                    throw new \RuntimeException();
+                }
+
+                $decoded = JWT::decode($token, new Key(SECRET_KEY, 'HS256'));
+
+                $user = \app\database\DB::select('id, ativo, session_version')
+                    ->from('users')
+                    ->where('id = ' . (int) $decoded->sub)
+                    ->fetchAssociative();
+
+                if (
+                    !$user ||
+                    !$user['ativo'] ||
+                    (int) $user['session_version'] !== (int) ($decoded->sv ?? 0)
+                ) {
+                    throw new \RuntimeException('Sessão inválida');
+                }
+
             } catch (\Throwable $e) {
                 #Qualquer falha cai aqui: cookie ausente, expirado ou adulterado.
                 $response = new Response();
@@ -46,12 +62,23 @@ class Middleware
             $auth = false;
             try {
                 #Curto-circuito: só faz decode se cookie e flag de sessão estiverem presentes.
-                if ($token && !empty($_SESSION['user']['logado'])) {
-                    #Valida assinatura HS256 e expiração do payload contra a SECRET_KEY.
-                    JWT::decode($token, new Key(SECRET_KEY, 'HS256'));
-                    #Token íntegro e sessão ativa: marca o usuário como autenticado.
-                    $auth = true;
-                }
+               if ($token && !empty($_SESSION['user']['logado'])) {
+
+    $decoded = JWT::decode($token, new Key(SECRET_KEY, 'HS256'));
+
+    $user = \app\database\DB::select('id, ativo, session_version')
+        ->from('users')
+        ->where('id = ' . (int) $decoded->sub)
+        ->fetchAssociative();
+
+    if (
+        $user &&
+        $user['ativo'] &&
+        (int)$user['session_version'] === (int)($decoded->sv ?? 0)
+    ) {
+        $auth = true;
+    }
+}
             } catch (\Throwable $e) {
                 #Qualquer falha é silenciosamente tratada como usuário não autenticado.
             }

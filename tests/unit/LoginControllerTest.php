@@ -21,7 +21,9 @@ test('preRegister com dados válidos retorna 200 com status true', function () {
         ]);
     $response = (new ResponseFactory() )->createResponse();
 
-    $result = ( new app\controller\Login() )->preRegister($request, $response, []);
+    $result = ( new app\controller\Login() )->preRegister($request, $response);
+
+    $result->getBody()->rewind();
 
 
 

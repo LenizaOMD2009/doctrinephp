@@ -58,7 +58,7 @@ trait DatabaseValueNormalizer
         # Fallback seguro
         return $now->format('Y-m-d H:i:s');
     }
-    public function normalizeToFloat(string|int|float $value): float
+    public function normalizeToFloat(string|int|float|null $value): float
     {
         # Fast-path para tipos numéricos reais
         if (is_int($value) || is_float($value)) {

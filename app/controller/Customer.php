@@ -139,7 +139,16 @@ final class Customer extends Base
                 ->fetchOne();
 
             # Query principal com WHERE opcional
-            $query = \app\database\DB::select('*')->from('customer');
+            $query = \app\database\DB::select("
+                id,
+                nome_fantasia,
+                sobrenome_razao,
+                cpf_cnpj,
+                to_char(nascimento_fundacao, 'DD/MM/YYYY')        AS nascimento_fundacao,
+                ativo,
+                to_char(criado_em,           'DD/MM/YYYY HH24:MI:SS') AS criado_em,
+                to_char(atualizado_em,       'DD/MM/YYYY HH24:MI:SS') AS atualizado_em
+            ")->from('customer');
 
             if (!is_null($term) && $term !== '') {
                 $query->setParameter('term', '%' . $term . '%');
@@ -181,11 +190,10 @@ final class Customer extends Base
                     $value['id'],
                     $nomeCompleto,
                     $cpfCnpj,
-                    $value['inscricao_estadual'],
-                    (new \DateTime($value['nascimento_fundacao']))->format('d/m/Y'),
+                    $value['nascimento_fundacao'],
                     ($value['ativo'] === true) ? 'Ativo' : 'Inativo',
-                    (new \DateTime($value['criado_em']))->format('d/m/Y H:i:s'),
-                    (new \DateTime($value['atualizado_em']))->format('d/m/Y H:i:s'),
+                    $value['criado_em'],
+                    $value['atualizado_em'],
                     "<td>
                     <a class='btn btn-sm btn-warning' href='/cliente/detalhes/" . $value['id'] . "'> <i class='fa-solid fa-pen-to-square'></i> Editar</a>
                     <button type='button' class='btn btn-sm btn-danger' onclick='ShowModal(" . $value['id'] . ");'> <i class='fa-solid fa-trash'></i> Excluir</button>

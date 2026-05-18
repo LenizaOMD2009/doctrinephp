@@ -19,6 +19,7 @@ test('preRegister com dados válidos retorna 200 com status true', function () {
             'email' => 'wiltonwilldepaulo@gmail.com',
             'telefone' => '(69) 9 9906-0839'
         ]);
+        
     $response = (new ResponseFactory() )->createResponse();
 
     $result = ( new app\controller\Login() )->preRegister($request, $response);

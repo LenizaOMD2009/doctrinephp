@@ -41,36 +41,27 @@ final class Login extends Base
         $senha = $form['senha'] ?? null;
 
         # Bloqueia se algum campo veio vazio
-        if (is_null($login) || is_null($senha)) {
+        if ($login === null || $senha === null) {
             return $this->json($response, [
                 'status' => false,
                 'msg'    => 'Por favor informe seu usuário e senha!',
                 'id'     => 0,
-            ]);
+            ], 403);
         }
 
-        # Verifica lockout por excesso de tentativas falhas
-        if (isset($_SESSION['login_locked_until']) && $_SESSION['login_locked_until'] > time()) {
-            return $this->json($response, [
-                'status' => false,
-                'msg'    => 'Muitas tentativas. Tente novamente em alguns minutos.',
-                'id'     => 0,
-            ], 429);
-        }
 
         try {
             # Monta a query parametrizada (proteção contra SQL injection via Doctrine)
-            $qb          = \app\database\DB::select('*')->from('vw_user');
-            $placeholder = $qb->createNamedParameter($login);
+            $query = \app\database\DB::select()->from('vw_user');
 
-            $qb->where('cpf = '       . $placeholder)
-                ->orWhere('email = '   . $placeholder)
-                ->orWhere('whatsapp = ' . $placeholder);
+            $query->where('cpf = :login')
+                ->orWhere('email = :login')
+                ->orWhere('telefone = :login');
 
-            $user = $qb->fetchAssociative();
+            $query->setParameter('login', $login);
+            $user = $query->fetchAssociative();
 
-            # Bloqueia contas inativas antes de verificar a senha
-            if ($user && !$user['ativo']) {
+            if (!$user or $user['ativo'] == false) {
                 return $this->json($response, [
                     'status' => false,
                     'msg'    => 'Sua conta não está ativa no momento. Entre em contato com o administrador.',
@@ -83,7 +74,7 @@ final class Login extends Base
             $senhaValida = password_verify($senha, $user['senha'] ?? $dummyHash);
 
             # Falha de autenticação: mensagem genérica + contador de tentativas
-            if (!$user || !$senhaValida) {
+            if (!$senhaValida) {
                 $_SESSION['login_attempts'] = ($_SESSION['login_attempts'] ?? 0) + 1;
 
                 if ($_SESSION['login_attempts'] >= 5) {
@@ -138,13 +129,14 @@ final class Login extends Base
     public function google($request, $response)
     {
         $form                = $request->getParsedBody();
-        $credential          = $form['credential']   ?? null;
-        $form_g_csrf_token   = $form['g_csrf_token'] ?? null;
+        $credential          = trim((string) ($form['credential']   ?? ''));
+        $form_g_csrf_token   = trim((string) ($form['g_csrf_token'] ?? ''));
         $cookie_g_csrf_token = $_COOKIE['g_csrf_token'] ?? null;
-        $google_client_id    = $_ENV['GOOGLE_CLIENT_ID'] ?? null;
+        $google_client_id    = trim($_ENV['GOOGLE_CLIENT_ID'] ?? '');
+        $google_client_secret = trim($_ENV['GOOGLE_CLIENT_SECRET'] ?? '');
 
         # Verifica dados ausentes
-        if (is_null($credential) || is_null($form_g_csrf_token) || is_null($cookie_g_csrf_token)) {
+        if ($credential === '' || $form_g_csrf_token === '' || $cookie_g_csrf_token === null) {
             return $this->json($response, [
                 'status' => false,
                 'msg'    => 'Credenciais Google ausentes.',
@@ -152,8 +144,17 @@ final class Login extends Base
             ], 400);
         }
 
+        if ($google_client_id === '') {
+            error_log('[google][CONFIG] GOOGLE_CLIENT_ID está ausente.');
+            return $this->json($response, [
+                'status' => false,
+                'msg'    => 'Configuração do Google Sign-In ausente.',
+                'id'     => 0,
+            ], 500);
+        }
+
         # Validação CSRF: token do formulário deve bater com o cookie
-        if ($form_g_csrf_token !== $cookie_g_csrf_token) {
+        if (!hash_equals($cookie_g_csrf_token, $form_g_csrf_token)) {
             return $this->json($response, [
                 'status' => false,
                 'msg'    => 'Falha na verificação de segurança (CSRF).',
@@ -166,15 +167,36 @@ final class Login extends Base
             # diretamente no endpoint oficial do Google
             $provider = new \League\OAuth2\Client\Provider\Google([
                 'clientId'     => $google_client_id,
-                'clientSecret' => '',
+                'clientSecret' => $google_client_secret,
                 'redirectUri'  => '',
             ]);
 
-            $httpResponse = $provider->getHttpClient()->request(
-                'GET',
-                'https://oauth2.googleapis.com/tokeninfo?id_token=' . urlencode($credential),
-                ['timeout' => 3, 'connect_timeout' => 2]
-            );
+            try {
+                $httpResponse = $provider->getHttpClient()->request(
+                    'GET',
+                    'https://oauth2.googleapis.com/tokeninfo?id_token=' . urlencode($credential),
+                    ['timeout' => 3, 'connect_timeout' => 2]
+                );
+            } catch (\GuzzleHttp\Exception\RequestException $e) {
+                $errorBody = (string) ($e->getResponse()?->getBody() ?? '');
+                error_log('[google][HTTP] ' . $e->getMessage() . ' | body=' . $errorBody);
+
+                $message = 'Falha ao validar token Google. Tente novamente.';
+                if ($errorBody !== '') {
+                    try {
+                        $payload = json_decode($errorBody, true, 512, JSON_THROW_ON_ERROR);
+                        if (!empty($payload['error_description'])) {
+                            $message = $payload['error_description'];
+                        } elseif (!empty($payload['error'])) {
+                            $message = is_string($payload['error']) ? $payload['error'] : json_encode($payload['error']);
+                        }
+                    } catch (\JsonException $_) {
+                        // ignora, manterá a mensagem genérica
+                    }
+                }
+
+                return $this->json($response, ['status' => false, 'msg' => $message, 'id' => 0], 502);
+            }
 
             $claims = json_decode(
                 (string) $httpResponse->getBody(),
@@ -226,15 +248,19 @@ final class Login extends Base
                 $senhaHash  = password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT);
 
                 $connection = \app\database\DB::connection();
-                $connection->insert('users', [
+                $insertData = [
                     'nome'           => $nome,
                     'sobrenome'      => $sobrenome,
                     'cpf'            => $cpf,
                     'rg'             => '',
                     'senha'          => $senhaHash,
-                    'ativo'          => true,
-                    'administrador'  => false,
-                ]);
+                    'ativo'          => 1,
+                    'administrador'  => 0,
+                ];
+
+                error_log('[google][INSERT_USERS_DATA] ' . json_encode($insertData));
+
+                $connection->insert('users', $insertData);
 
                 $id_usuario = (int) $connection->lastInsertId();
                 if (!$id_usuario) {
@@ -279,14 +305,26 @@ final class Login extends Base
 
             return $this->_criarSessaoERetornar($response, $user);
         } catch (\JsonException $e) {
-            error_log('[google][JSON] ' . $e->getMessage());
-            return $this->json($response, ['status' => false, 'msg' => 'Resposta inválida do Google. Tente novamente.', 'id' => 0], 502);
+            error_log('[google][JSON] ' . $e->getMessage() . ' | ' . $e->getTraceAsString());
+            $msg = 'Resposta inválida do Google. Tente novamente.';
+            if (($_ENV['APP_DEBUG'] ?? 'false') === 'true') {
+                $msg = $e->getMessage();
+            }
+            return $this->json($response, ['status' => false, 'msg' => $msg, 'id' => 0], 502);
         } catch (\PDOException $e) {
-            error_log('[google][DB] ' . $e->getMessage());
-            return $this->json($response, ['status' => false, 'msg' => 'Não foi possível concluir o login. Tente novamente.', 'id' => 0], 500);
+            error_log('[google][DB] ' . $e->getMessage() . ' | ' . $e->getTraceAsString());
+            $msg = 'Não foi possível concluir o login. Tente novamente.';
+            if (($_ENV['APP_DEBUG'] ?? 'false') === 'true') {
+                $msg = $e->getMessage();
+            }
+            return $this->json($response, ['status' => false, 'msg' => $msg, 'id' => 0], 500);
         } catch (\Throwable $e) {
-            error_log('[google][GERAL] ' . $e->getMessage());
-            return $this->json($response, ['status' => false, 'msg' => 'Falha na autenticação com Google. Tente novamente.', 'id' => 0], 500);
+            error_log('[google][GERAL] ' . $e->getMessage() . ' | ' . $e->getTraceAsString());
+            $msg = 'Falha na autenticação com Google. Tente novamente.';
+            if (($_ENV['APP_DEBUG'] ?? 'false') === 'true') {
+                $msg = $e->getMessage();
+            }
+            return $this->json($response, ['status' => false, 'msg' => $msg, 'id' => 0], 500);
         }
     }
 
@@ -296,14 +334,17 @@ final class Login extends Base
     public function preRegister($request, $response)
     {
         $form      = $request->getParsedBody();
-        $nome      = trim($form['nome']      ?? '');
-        $sobrenome = trim($form['sobrenome'] ?? '');
-        $cpf       = trim($form['cpf']       ?? '');
-        $rg        = trim($form['rg']        ?? '');
-        $senha     = $form['senha']          ?? '';
+        $nome      = $form['cad-nome'] ?? null;
+        $sobrenome = $form['cad-sobrenome'] ?? null;
+        $cpf       = $form['cad-cpf']       ?? null;
+        $rg        = $form['cad-rg']        ?? null;
+        $senha     = $form['cad-senha']          ?? '';
+        $confirmar_senha = $form['cad-confirmar-senha'] ?? '';
         $contacts  = $form['contacts']       ?? [];
-        $email     = trim($form['email']     ?? '');
-        $telefone  = trim($form['telefone']  ?? '');
+        $email     = $form['cad-email']     ?? null;
+        $telefone  = $form['cad-telefone']  ?? null;
+        $celular   = $form['cad-celular']   ?? null;
+        $whatsapp  = $form['cad-whatsapp']  ?? null;
 
         # Adiciona e-mail e telefone ao array de contatos, se informados
         if ($email) {
@@ -311,6 +352,12 @@ final class Login extends Base
         }
         if ($telefone) {
             $contacts[] = ['tipo' => 'TELEFONE', 'contato' => $telefone];
+        }
+        if ($celular) {
+            $contacts[] = ['tipo' => 'CELULAR',  'contato' => $celular];
+        }
+        if ($whatsapp) {
+            $contacts[] = ['tipo' => 'WHATSAPP', 'contato' => $whatsapp];
         }
 
         # Campos obrigatórios
@@ -344,7 +391,7 @@ final class Login extends Base
                 'cpf'       => $cpf,
                 'rg'        => $rg,
                 'senha'     => password_hash($senha, PASSWORD_DEFAULT),
-                'ativo'     => false,
+                'ativo'     => 0,
             ]);
 
             $id_usuario = (int) $connection->lastInsertId();

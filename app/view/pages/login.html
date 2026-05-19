@@ -56,17 +56,10 @@
                     </svg>
                     Login com Google
                 </button>
-            </form>
 
-            <p class="signup-link">
-                Não tem uma conta? <a href="#" onclick="openModal(); return false;">Cadastre-se</a>
-            </p>
-        </div>
-    </div>
-
-    <!-- ===== MODAL CADASTRO ===== -->
+                    <!-- ===== MODAL CADASTRO ===== -->
     <div class="overlay" id="overlay-cadastro">
-        <div class="modal-cadastro" id="modal-cadastro">
+        <div class="modal-cadastro" id="modal-cadastro" name="modal-cadastro">
 
             <div class="modal-header">
                 <div>
@@ -87,7 +80,9 @@
                         <input
                             type="text"
                             id="cad-nome"
+                            name="cad-nome"
                             placeholder="Ex: João"
+                            required
                             autocomplete="given-name"
                             onkeydown="if(event.key==='Enter'){ event.preventDefault(); document.getElementById('cad-sobrenome').focus(); }"
                         />
@@ -98,7 +93,9 @@
                         <input
                             type="text"
                             id="cad-sobrenome"
+                            name="cad-sobrenome"    
                             placeholder="Ex: Silva"
+                            required
                             autocomplete="family-name"
                             onkeydown="if(event.key==='Enter'){ event.preventDefault(); document.getElementById('cad-cpf').focus(); }"
                         />
@@ -112,7 +109,9 @@
                         <input
                             type="text"
                             id="cad-cpf"
+                            name="cad-cpf"
                             placeholder="000.000.000-00"
+                            required
                             maxlength="14"
                             autocomplete="off"
                             inputmode="numeric"
@@ -125,7 +124,9 @@
                         <input
                             type="text"
                             id="cad-rg"
+                            name="cad-rg"
                             placeholder="00.000.000-0"
+                            required
                             maxlength="12"
                             autocomplete="off"
                             inputmode="numeric"
@@ -144,7 +145,9 @@
                             <input
                                 type="password"
                                 id="cad-senha"
+                                name="cad-senha"
                                 placeholder="Mínimo 8 caracteres"
+                                required
                                 autocomplete="new-password"
                                 oncopy="return false"
                                 oncut="return false"
@@ -168,7 +171,9 @@
                             <input
                                 type="password"
                                 id="cad-confirmar-senha"
+                                name="cad-confirmar-senha"
                                 placeholder="Repita a senha"
+                                required
                                 autocomplete="new-password"
                                 oncopy="return false"
                                 oncut="return false"
@@ -197,7 +202,9 @@
                         <input
                             type="email"
                             id="cad-email"
+                            name="cad-email"
                             placeholder="seu@email.com"
+                            required
                             autocomplete="email"
                             onkeydown="if(event.key==='Enter'){ event.preventDefault(); document.getElementById('btnCadastrar').click(); }"
                         />
@@ -211,7 +218,9 @@
                         <input
                             type="text"
                             id="cad-celular"
+                            name="cad-celular"
                             placeholder="(11) 9 0000-0000"
+                            required
                             maxlength="16"
                             inputmode="numeric"
                             autocomplete="tel"
@@ -226,7 +235,9 @@
                         <input
                             type="text"
                             id="cad-telefone"
+                            name="cad-telefone"
                             placeholder="(11) 0000-0000"
+                            required
                             maxlength="14"
                             inputmode="numeric"
                             autocomplete="tel"
@@ -241,7 +252,9 @@
                         <input
                             type="text"
                             id="cad-whatsapp"
+                            name="cad-whatsapp"
                             placeholder="(11) 9 0000-0000"
+                            required
                             maxlength="16"
                             inputmode="numeric"
                             autocomplete="tel"
@@ -255,13 +268,23 @@
                         Ao se cadastrar você concorda com os
                         <a href="#">Termos de Uso</a> e a <a href="#">Política de Privacidade</a>.
                     </p>
-                    <button class="btn-submit" type="button" id="btnCadastrar">Criar Conta →</button>
+                    <button class="btn-submit" type="button" id="btnCadastrar" name="btnCadastrar">Criar Conta →</button>
                 </div>
 
             </div>
         </div>
     </div>
     <!-- ===== /MODAL CADASTRO ===== -->
+
+
+            </form>
+
+            <p class="signup-link">
+                Não tem uma conta? <a href="#" onclick="openModal(); return false;">Cadastre-se</a>
+            </p>
+        </div>
+    </div>
+
 
     {{ vite('resources/js/app.js') }}
     <script src="https://accounts.google.com/gsi/client" async defer></script>

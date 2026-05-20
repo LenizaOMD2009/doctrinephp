@@ -1,0 +1,102 @@
+{% extends 'layouts/main.html' %}
+
+{% block breadcrumbs %}
+<ol class="breadcrumb float-sm-end">
+    <li class="breadcrumb-item"><a href="/">Início</a></li>
+    <li class="breadcrumb-item"><a href="/produto/lista">Lista de produtos</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Detalhes do produto</li>
+</ol>
+{% endblock %}
+
+{% block main %}
+<form id="form">
+    <input type="hidden" id="action" name="action" value="{{action}}">
+    <input type="hidden" id="id" name="id" value="{{id}}">
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <a href="/produto/lista" class="btn btn-warning">
+                        <i class="fa-solid fa-chevron-left"></i>
+                        Voltar
+                    </a>
+                </div>
+
+                <div class="card-body">
+                    <div class="row">
+
+                        <div class="col-lg-6 col-md-6">
+                            <div class="form-floating mb-3">
+                                <input autofocus type="text" class="form-control" id="nome"
+                                    name="nome" placeholder="Digite o nome do produto!"
+                                    value="{{product.nome}}" required>
+                                <label for="nome">Nome do produto</label>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-6 col-md-6">
+                            <div class="form-floating mb-3">
+                                <input type="text" class="form-control" id="sku"
+                                    name="sku" placeholder="Digite o SKU!"
+                                    value="{{product.sku}}" required>
+                                <label for="sku">SKU</label>
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="form-floating mb-3">
+                                <input type="text" class="form-control" id="descricao"
+                                    name="descricao" placeholder="Digite a descrição do produto!"
+                                    value="{{product.descricao}}">
+                                <label for="descricao">Descrição</label>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-6 col-md-6">
+                            <div class="form-floating mb-3">
+                                <input type="number" step="0.01" class="form-control" id="preco"
+                                    name="preco" placeholder="Digite o preço!"
+                                    value="{{product.preco}}" required>
+                                <label for="preco">Preço</label>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-6 col-md-6">
+                            <div class="form-floating mb-3">
+                                <input type="text" class="form-control" id="categoria"
+                                    name="categoria" placeholder="Digite a categoria!"
+                                    value="{{product.categoria}}">
+                                <label for="categoria">Categoria</label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <div class="icheck-primary d-inline">
+                                <input class="form-check-label" type="checkbox" id="ativo"
+                                    name="ativo" value="true"
+                                    {% if product.ativo == 1 %} checked {% endif %}>
+                                <label for="ativo">
+                                    Ativo?
+                                </label>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="card-footer">
+                    <button id="insert" type="button" class="btn btn-success">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        Salvar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block script %}
+{{ vite('resources/js/pages/product.js') }}
+{% endblock %}

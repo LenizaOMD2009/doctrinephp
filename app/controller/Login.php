@@ -49,7 +49,6 @@ final class Login extends Base
             ], 403);
         }
 
-
         try {
             # Monta a query parametrizada (proteção contra SQL injection via Doctrine)
             $query = \app\database\DB::select()->from('vw_user');
@@ -390,7 +389,7 @@ final class Login extends Base
                 'sobrenome' => $sobrenome,
                 'cpf'       => $cpf,
                 'rg'        => $rg,
-                'senha'     => password_hash($senha, PASSWORD_DEFAULT),
+                'senha'     => password_hash($confirmar_senha, PASSWORD_DEFAULT),
                 'ativo'     => 0,
             ]);
 

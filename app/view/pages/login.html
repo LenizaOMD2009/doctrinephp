@@ -18,7 +18,7 @@
         <div class="login-form-side">
             <h1 class="login-title">Login</h1>
 
-            <form id="form">
+            <form id="login-form">
                 <div class="form-group">
                     <label for="login">CPF, Telefone ou E-mail</label>
                     <input
@@ -56,18 +56,19 @@
                     </svg>
                     Login com Google
                 </button>
+            </form>
 
                     <!-- ===== MODAL CADASTRO ===== -->
     <div class="overlay" id="overlay-cadastro">
         <div class="modal-cadastro" id="modal-cadastro" name="modal-cadastro">
-
-            <div class="modal-header">
-                <div>
-                    <h2>Criar Conta</h2>
-                    <p>Preencha os dados para se cadastrar</p>
+            <form id="register-form">
+                <div class="modal-header">
+                    <div>
+                        <h2>Criar Conta</h2>
+                        <p>Preencha os dados para se cadastrar</p>
+                    </div>
+                    <button class="close-btn" onclick="closeModal()">✕</button>
                 </div>
-                <button class="close-btn" onclick="closeModal()">✕</button>
-            </div>
 
             <div class="modal-body">
 
@@ -149,9 +150,6 @@
                                 placeholder="Mínimo 8 caracteres"
                                 required
                                 autocomplete="new-password"
-                                oncopy="return false"
-                                oncut="return false"
-                                onpaste="return false"
                                 onkeydown="if(event.key==='Enter'){ event.preventDefault(); document.getElementById('cad-confirmar-senha').focus(); }"
                             />
                             <button class="pw-toggle" type="button" onclick="togglePw('cad-senha', this)">👁</button>
@@ -175,9 +173,6 @@
                                 placeholder="Repita a senha"
                                 required
                                 autocomplete="new-password"
-                                oncopy="return false"
-                                oncut="return false"
-                                onpaste="return false"
                                 onkeydown="if(event.key==='Enter'){ event.preventDefault(); document.getElementById('cad-email').focus(); }"
                             />
                             <button class="pw-toggle" type="button" onclick="togglePw('cad-confirmar-senha', this)">👁</button>
@@ -272,12 +267,10 @@
                 </div>
 
             </div>
+            </form>
         </div>
     </div>
     <!-- ===== /MODAL CADASTRO ===== -->
-
-
-            </form>
 
             <p class="signup-link">
                 Não tem uma conta? <a href="#" onclick="openModal(); return false;">Cadastre-se</a>

@@ -5,8 +5,8 @@ declare(strict_types=1);
 use app\middleware\Middleware;
 
 $app->get('/login', app\controller\Login::class . ':login')->add(Middleware::web());
-$app->post('/login', app\controller\Login::class . ':authenticate');
-$app->get('/logout', app\controller\Login::class . ':logout');
+$app->post('/login', app\controller\Login::class . ':authenticate')->add(Middleware::web());
+$app->get('/logout', app\controller\Login::class . ':logout')->add(Middleware::web());
 
 $app->post('/cadastro', app\controller\Login::class . ':preRegister');
 

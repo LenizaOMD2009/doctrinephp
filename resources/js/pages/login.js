@@ -20,7 +20,7 @@ function clearErrors() {
 }
 
 function validateLoginForm() {
-    Validate.SetForm('form');
+    Validate.SetForm('login-form');
     Validate.form.validate({
         rules: {
             login: { required: true },
@@ -47,7 +47,7 @@ async function handleLogin() {
     setLoading(true);
     try {
         const requests = new Requests();
-        const response = await requests.setForm('form').post('/login');
+        const response = await requests.setForm('login-form').post('/login');
 
         if (!response?.status) {
             Swal.fire({
@@ -93,7 +93,7 @@ async function handleLogin() {
 
 BtnLogin.addEventListener('click', handleLogin);
 
-document.getElementById('form').addEventListener('keydown', (e) => {
+document.getElementById('login-form').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); handleLogin(); }
 });
 
@@ -342,7 +342,7 @@ function validarCadastro() {
 
 document.getElementById('btnCadastrar').addEventListener('click', async () => {
     console.log('oi')
-    const isValid = Validate.SetForm('form').Validate();
+    const isValid = Validate.SetForm('register-form').Validate();
     if (!isValid) {
         Swal.fire({
             icon: 'warning',
@@ -352,9 +352,9 @@ document.getElementById('btnCadastrar').addEventListener('click', async () => {
         });
         return;
     }
-    const resquests = new Requests();
+    const requests = new Requests();
     try {
-        const response = await resquests.setForm('form').post('/authentication/preregister');
+        const response = await requests.setForm('register-form').post('/authentication/preregister');
         console.log(response);
 
     } catch (error) {

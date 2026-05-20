@@ -447,7 +447,7 @@ final class Login extends Base
                 \app\database\DB::connection()->update(
                     'users',
                     [
-                        'ativo'         => false,
+                        'ativo'         => 0,
                         'atualizado_em' => date('Y-m-d H:i:s'),
                     ],
                     [
@@ -459,8 +459,13 @@ final class Login extends Base
                 error_log('[logout][DB] ' . $e->getMessage());
             }
         }
-        session_unset();
-        # Limpa sessão
+
+        # HTTPS detect
+        $isSecure =
+            (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || ($_SERVER['SERVER_PORT'] ?? null) == 443;
+
+        $cookieDomain = parse_url(HOST, PHP_URL_HOST) ?: '';
 
         # Remove cookie da sessão PHP
         if (ini_get('session.use_cookies')) {
@@ -476,30 +481,31 @@ final class Login extends Base
                 'samesite' => 'Lax',
             ]);
         }
-        $cookieDomain = parse_url(HOST, PHP_URL_HOST) ?: '';
-
-        if (!$cookieDomain) {
-            $cookieDomain = '';
-        }
-        # Destrói sessão
-        session_destroy();
-
-        $_SESSION = [];
-
-        # HTTPS detect
-        $isSecure =
-            (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || ($_SERVER['SERVER_PORT'] ?? null) == 443;
 
         # Remove JWT
         setcookie('auth_token', '', [
             'expires'  => time() - 42000,
             'path'     => '/',
-            'domain' => $cookieDomain,
+            'domain'   => $cookieDomain,
             'secure'   => $isSecure,
             'httponly' => true,
             'samesite' => 'Lax',
         ]);
+
+        # Remove CSRF cookie do Google
+        setcookie('g_csrf_token', '', [
+            'expires'  => time() - 42000,
+            'path'     => '/',
+            'domain'   => $cookieDomain,
+            'secure'   => $isSecure,
+            'httponly' => false,
+            'samesite' => 'Lax',
+        ]);
+
+        # Limpa e destrói a sessão (ordem correta)
+        $_SESSION = [];
+        session_unset();
+        session_destroy();
 
         return (new \Slim\Psr7\Response())
             ->withHeader('Location', '/login')
